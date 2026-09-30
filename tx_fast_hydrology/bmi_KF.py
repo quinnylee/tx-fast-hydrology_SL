@@ -27,15 +27,27 @@ UPSTREAM_INPUTS = {
     "5786029": "5785351",
     }
 
-EXCLUDE_GAGES = [8158920,8159105, 8158600]
+#These are the gages for hold out assessment. Ideally, we would want to be this in the yaml file
+#or elsewhere, where user can define what gages to remove. 
+EXCLUDE_GAGES = [8155400,8158000]
 
 class BmiKF:
     """BMI wrapper for the TX fast hydrology model collection with DA."""
 
+    #these are the variables user can set value by using set value functions
     _INPUT_VAR_NAMES = ("k", "x", "initial_discharge")
+
+    #these are the variables user can get value by using the get value functions
     _OUTPUT_VAR_NAMES = ("reach_list", "discharge")
 
     def load_config(self, config_path="KF.yaml"):
+        """
+        Loads the config file.
+
+        Parameters:
+        config_path: str
+            path to the yaml file that helps to initialize the model.
+        """
         config = {}
         with open(config_path, "r", encoding="utf-8") as file:
             for line in file:
@@ -45,8 +57,19 @@ class BmiKF:
         return config
 
     def load_and_build_inputs(self, config):
+        """
+        Loads the input values for the function such
+        as network, measurements, forcing (lateral flow)
+        values.
+
+        Parameters:
+        config: dict
+            dictionary that gets created by using the config file path.
+        """
+
         model_collection = ModelCollection.from_file(config["network_file_path"])
 
+        #this is the internal time step of the model
         dt = model_collection.timedelta.seconds
 
         inputs = None
@@ -101,6 +124,7 @@ class BmiKF:
                 )
             inputs = pd.DataFrame(0.0, index=time_index, columns=input_columns)
 
+        #create the observation dataframe
         measurements = pd.read_csv(config["measurement_file_path"], index_col=0, usecols=lambda col: col not in EXCLUDE_GAGES)
         measurements.index = pd.to_datetime(measurements.index)
         measurements.columns = measurements.columns.astype(str)
@@ -127,6 +151,18 @@ class BmiKF:
         return model_collection, measurements, inputs, dt
 
     def prepare_model(self, model_collection, measurements, dt, config):
+        """
+        Prepares the model_collection by binding callback
+
+        Parameters:
+            model_collection: dict
+                model collection object that gets built using the network info
+            measurements: df
+                measurements dataframe
+            dt: int | float
+                internal time step of the model
+            config: dict
+        """
         for model in model_collection.models.values():
             model_sites = [
                 reach_id for reach_id in model.reach_ids if reach_id in measurements.columns
@@ -154,6 +190,13 @@ class BmiKF:
         return model_collection
 
     def initialize(self, config_file="KF.yaml"):
+        """
+        initializes the entire model by binding all the helper functions.
+        
+        Parameters:
+            config_file: str
+                path to the yaml file that helps to initialize the model.
+        """
         self.config_file = config_file
         self.config = self.load_config(config_file)
 
@@ -188,17 +231,28 @@ class BmiKF:
         self._sorted_indices = None
 
     def update(self):
+        #update the model for the internal time step of the model
         self.update_until(time_window=self.model_collection.timedelta.total_seconds())
 
     def update_until(self, time_window):
+        """Advance KF by ``time_window`` seconds.
+        Parameters
+        ----------
+        time_window : int
+            time window you want the model to slide into future
+        """
         self._require_initialized()
         model_timestep = self.model_collection.timedelta.total_seconds()
+
+        #if the time window provided by the user is not the perfect multiple
+        #of model_timestep (dt), raise error
         if time_window % model_timestep != 0:
             raise ValueError(
                 "time_window must be expressible as a multiple of "
                 f"model_collection.timedelta. {model_timestep}"
             )
 
+        #if it is a perfect multiple, route that many time steps.
         n_steps = int(time_window / model_timestep)
         for _ in range(n_steps):
             outputs_da = self._run_async(
@@ -347,6 +401,14 @@ class BmiKF:
         self.input_var_store[name] = src
 
     def update_k_x_discharge(self, index_crosswalk_cache):
+        """
+        This updates k, x, and discharge for the individual model of model collection
+        with the k, x, and discharge set by the set_value function (primarily from t-route).
+
+        This function should only be used if the self.with_troute is True because the index crosswalking
+        is between the reach_list of BMI T-route and BMI KF.
+        """
+
         if self.input_var_store["k"] is None or self.input_var_store["x"] is None or self.input_var_store["initial_discharge"] is None:
             raise ValueError("Cant update the value when one of the input variables is None")
         else:
@@ -367,6 +429,9 @@ class BmiKF:
 
     @staticmethod
     def _run_async(coro):
+        """
+        Handles async computation
+        """
         try:
             asyncio.get_running_loop()
         except RuntimeError:
