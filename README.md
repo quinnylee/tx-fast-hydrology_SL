@@ -39,16 +39,3 @@ KF from the configuration file's directory.
 The package installation does not install t-route or the optional dependencies
 used by the download utilities, web application, and HDF-backed smoother.
 Those features require their corresponding dependencies separately.
-
-## Notebook check
-
-Open `interface.ipynb` from the repository root with the existing t-route
-environment selected. Its first code cell installs the hydrology repository's
-`EKF_Troute` branch into the notebook's Python environment. It uses
-`--force-reinstall --no-deps` to replace an existing KF installation while
-keeping the environment's existing dependencies. For an environment without
-the core dependencies, run the standard installation command above first.
-
-The next cell imports `BmiKF` and checks both the installation source and the
-imported module's location. Restart the kernel before running the notebook if
-KF was previously imported.
