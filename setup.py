@@ -12,6 +12,7 @@ setup(
     author_email="mdbartos@utexas.edu",
     url="https://future-water.org",
     packages=["tx_fast_hydrology"],
+    python_requires=">=3.11",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

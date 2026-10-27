@@ -170,7 +170,7 @@ class BmiKF:
             if model_sites:
                 basin_measurements = measurements[model_sites]
                 Q_cov = 1.0 * np.eye(model.n)
-                R_cov = 1.0 * np.eye(basin_measurements.shape[1])
+                R_cov = 0.0 * np.eye(basin_measurements.shape[1])
                 P_t_init = Q_cov.copy()
                 kf = KalmanFilter(model, basin_measurements, Q_cov, R_cov, P_t_init)
                 model.bind_callback(kf, key="kf")
