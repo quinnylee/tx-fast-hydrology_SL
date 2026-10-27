@@ -5,23 +5,19 @@ Routing and data assimilation code for the TxDOT FAST project, including the
 
 ## Installation
 
-Install directly from GitHub without manually cloning the repository:
+Install directly from the hydrology repository's `EKF_Troute` branch without
+manually cloning the repository:
 
 ```sh
-python -m pip install "tx-fast-hydrology @ git+https://github.com/slama0077/Python_Interface.git#subdirectory=KF"
+python -m pip install "tx-fast-hydrology @ git+https://github.com/slama0077/tx-fast-hydrology_SL.git@EKF_Troute"
 ```
 
-Git must be installed for this command. For a reproducible installation, put
-`@<tag-or-commit>` after `.git` and before `#subdirectory=KF`.
+Git must be installed for this command. The package configuration is at the
+hydrology repository root. For a reproducible installation, replace
+`@EKF_Troute` with `@<tag-or-commit>`.
 
-To test local packaging changes, run this from the `Python_Interface` directory:
-
-```sh
-python -m pip install ./KF
-```
-
-Both commands install the package normally, without editable mode, and install
-the core dependencies: NumPy, pandas, SciPy, and Numba.
+This installs the package normally, without editable mode, and installs the
+core dependencies: NumPy, pandas, SciPy, and Numba.
 
 ## Usage
 
@@ -47,7 +43,12 @@ Those features require their corresponding dependencies separately.
 ## Notebook check
 
 Open `interface.ipynb` from the repository root with the existing t-route
-environment selected. Its first code cell installs `./KF` into the notebook's
-Python environment. The next cell imports `BmiKF` and checks that it comes from
-the installed distribution. Restart the kernel before running the notebook if
-KF was previously imported from the source directory.
+environment selected. Its first code cell installs the hydrology repository's
+`EKF_Troute` branch into the notebook's Python environment. It uses
+`--force-reinstall --no-deps` to replace an existing KF installation while
+keeping the environment's existing dependencies. For an environment without
+the core dependencies, run the standard installation command above first.
+
+The next cell imports `BmiKF` and checks both the installation source and the
+imported module's location. Restart the kernel before running the notebook if
+KF was previously imported.
