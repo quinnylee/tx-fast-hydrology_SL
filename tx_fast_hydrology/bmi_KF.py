@@ -28,14 +28,14 @@ UPSTREAM_INPUTS = {
     }
 
 #These are the gages for hold out assessment. Ideally, we would want to be this in the yaml file
-#or elsewhere, where user can define what gages to remove. 
+#or elsewhere, where user can define what gages to remove.
 EXCLUDE_GAGES = [8155400,8158000]
 
 class BmiKF:
     """BMI wrapper for the TX fast hydrology model collection with DA."""
 
     #these are the variables user can set value by using set value functions
-    _INPUT_VAR_NAMES = ("k", "x", "initial_discharge")
+    _INPUT_VAR_NAMES = ("k", "x", "initial_discharge", "discharge_obs")
 
     #these are the variables user can get value by using the get value functions
     _OUTPUT_VAR_NAMES = ("reach_list", "discharge")
@@ -113,8 +113,8 @@ class BmiKF:
 
         else:
             time_index = pd.date_range(
-            start=start_date, 
-            end=end_date, 
+            start=start_date,
+            end=end_date,
             freq=f"{dt}s"
             )
             input_columns = list(
@@ -124,31 +124,7 @@ class BmiKF:
                 )
             inputs = pd.DataFrame(0.0, index=time_index, columns=input_columns)
 
-        #create the observation dataframe
-        measurements = pd.read_csv(config["measurement_file_path"], index_col=0, usecols=lambda col: col not in EXCLUDE_GAGES)
-        measurements.index = pd.to_datetime(measurements.index)
-        measurements.columns = measurements.columns.astype(str)
-
-        usgs_to_comid = pd.read_csv(config["usgs_to_comid_file_path"], index_col=0)
-        usgs_to_comid["gage_id"] = usgs_to_comid["gage_id"].astype(str)
-        usgs_to_comid["comid"] = usgs_to_comid["comid"].astype(str)
-        usgs_to_comid = usgs_to_comid[usgs_to_comid["comid"].isin(input_columns)]
-        usgs_to_comid = pd.Series(
-            usgs_to_comid["comid"].values,
-            index=usgs_to_comid["gage_id"].values,
-        )
-
-        measurements = measurements[usgs_to_comid.index]
-        measurements.columns = measurements.columns.map(usgs_to_comid)
-        
-        # Subset measurements by the specified time window
-        measurements = measurements.loc[start_date : end_date]
-        measurements = measurements.dropna(axis=1)
-        measurements = measurements.loc[:, ~(measurements == 0.0).all(axis=0).values]
-        measurements = measurements.loc[:, ~measurements.columns.duplicated()].copy()
-        measurements = measurements.resample(f"{dt}s").mean().interpolate().ffill().bfill()
-
-        return model_collection, measurements, inputs, dt
+        return model_collection, inputs, dt
 
     def prepare_model(self, model_collection, measurements, dt, config):
         """
@@ -163,11 +139,13 @@ class BmiKF:
                 internal time step of the model
             config: dict
         """
-        for model in model_collection.models.values():
+        self._model_sites = {}
+        for model_name, model in model_collection.models.items():
             model_sites = [
                 reach_id for reach_id in model.reach_ids if reach_id in measurements.columns
             ]
             if model_sites:
+                self._model_sites[model_name] = model_sites
                 basin_measurements = measurements[model_sites]
                 Q_cov = 1.0 * np.eye(model.n)
                 R_cov = 0.0 * np.eye(basin_measurements.shape[1])
@@ -189,16 +167,17 @@ class BmiKF:
                 model.datetime = pd.to_datetime(config["start_date"])
         return model_collection
 
-    def initialize(self, config_file="KF.yaml"):
+    def initialize(self, init_measurements, config_file="KF.yaml"):
         """
         initializes the entire model by binding all the helper functions.
-        
+
         Parameters:
             config_file: str
                 path to the yaml file that helps to initialize the model.
         """
         self.config_file = config_file
         self.config = self.load_config(config_file)
+        self.measurements = init_measurements
 
         # Parse with_troute parameter (defaults to False if not provided)
         with_troute_str = str(self.config.get("with_troute", "false")).strip().lower()
@@ -206,11 +185,10 @@ class BmiKF:
 
         (
             self.model_collection,
-            self.measurements,
             self.inputs,
             self.dt,
         ) = self.load_and_build_inputs(self.config)
-        
+
         self.model_collection = self.prepare_model(
             self.model_collection,
             self.measurements,
@@ -241,6 +219,8 @@ class BmiKF:
         time_window : int
             time window you want the model to slide into future
         """
+        print(self.get_time_step(), self.model_collection.timedelta, self.get_current_time())
+        print("update_until", time_window, "t before:", self._current_time)
         self._require_initialized()
         model_timestep = self.model_collection.timedelta.total_seconds()
 
@@ -271,7 +251,7 @@ class BmiKF:
         #sort the reach_list once and apply everytime when updating
         if self._sorted_indices is None:
             self._sorted_indices = np.argsort(self.output_var_store["reach_list"])
-            
+
         self.output_var_store["reach_list"] = self.output_var_store["reach_list"][self._sorted_indices]
         self.output_var_store["discharge"] = self.output_var_store["discharge"][self._sorted_indices]
 
@@ -301,7 +281,7 @@ class BmiKF:
 
     def get_current_datetime(self):
         return self.model_collection.datetime
-    
+
     def get_current_time(self):
         return self._current_time
 
@@ -423,6 +403,16 @@ class BmiKF:
                 #update the msukingum coefficients
                 model.compute_muskingum_coeffs(model.K, model.X)
 
+    def update_measurements(self):
+
+        measurements = self.input_var_store["discharge_obs"]
+        #update the measurements for kf
+        for model_name, model in self.model_collection.models.items():
+            kf = model.callbacks.get('kf')
+            if kf is None:
+                continue
+            sites = self._model_sites[model_name]
+            kf.update_measurements(measurements[sites])
 
     def set_value_at_indices(self, name, inds, src):
         return NotImplementedError
