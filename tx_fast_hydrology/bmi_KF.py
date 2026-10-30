@@ -167,7 +167,7 @@ class BmiKF:
                 model.datetime = pd.to_datetime(config["start_date"])
         return model_collection
 
-    def initialize(self, init_measurements, config_file="KF.yaml"):
+    def initialize(self, values, dates, ids, config_file="KF.yaml"):
         """
         initializes the entire model by binding all the helper functions.
 
@@ -177,7 +177,13 @@ class BmiKF:
         """
         self.config_file = config_file
         self.config = self.load_config(config_file)
-        self.measurements = init_measurements
+
+        measurements = pd.DataFrame(
+            np.array(values, dtype=float).reshape(len(dates), len(ids)),
+            index=pd.DatetimeIndex(dates),
+            columns=ids,
+        )
+        self.measurements = measurements
 
         # Parse with_troute parameter (defaults to False if not provided)
         with_troute_str = str(self.config.get("with_troute", "false")).strip().lower()
